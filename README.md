@@ -1,9 +1,10 @@
-# file1: Tired of main_fixed.py? file1 cleans up the mess from AI agents. / 告别main_fixed.py：用file1清理AI智能体留下的烂摊子
+<h1 align="center">👕 file1</h1>
 
-Tired of navigating through endless main_fixed.py and file_improved.py files? File1 revolutionizes your file management by eliminating AI-generated code clutter. Our advanced detection algorithms precisely **identify and remove duplicate files and mock data**, while our powerful graph visualization reveals complex file relationships at a glance. With vision model integration for comprehensive content analysis across text, images, and PDFs, File1 provides AI agents with complete file context.
+<h2 align="center"> Tired of main_fixed.py? file1 cleans up the mess from AI agents.</h2>
+
+Tired of navigating through endless main_fixed.py and file_improved.py files? file1 revolutionizes your file management by eliminating AI-generated code clutter. Our advanced detection algorithms precisely **identify and remove duplicate files and mock data**, while our powerful graph visualization reveals complex file relationships at a glance. With vision model integration for comprehensive content analysis across text, images, and PDFs, file1 provides AI agents with complete file context.
 
 Even better, the file relationship graph and automatically generated file summaries can **serve directly as agent memory**, giving your AI agents persistent, structured awareness of your entire workspace.
-Turn your chaotic codebase into an organized, intelligent environment with File1.
 
 ## Features
 
@@ -16,7 +17,7 @@ Turn your chaotic codebase into an organized, intelligent environment with File1
 
 ## Installation
 
-You can install File1 using pip:
+You can install file1 using pip:
 
 ```bash
 pip install file1
@@ -33,12 +34,12 @@ pip install -e .[dev]
 ## Quick Start
 
 ```python
-from file1 import File1
-from file1.config import File1Config
+from file1 import file1
+from file1.config import file1Config
 
 # Initialize with default configuration
-config = File1Config()
-file1 = File1(config)
+config = file1Config()
+file1 = file1(config)
 
 # Clean repository (remove duplicates and simulated data)
 file1.clean_repository("/path/to/your/project")
@@ -52,7 +53,7 @@ file1.visualize_graph(graph, save_path="file_relationship.png")
 
 ## Configuration
 
-File1 uses a TOML configuration file to specify model settings and other parameters:
+file1 uses a TOML configuration file to specify model settings and other parameters:
 
 ```toml
 [model]
@@ -81,7 +82,7 @@ path = "/path/to/save/directory"
 
 ## API Reference
 
-### File1
+### file1
 
 The main class for file analysis and management.
 
@@ -116,12 +117,12 @@ A class for managing files, detecting duplicates, and building relationships.
 ### Basic Usage
 
 ```python
-from file1 import File1
-from file1.config import File1Config
+from file1 import file1
+from file1.config import file1Config
 
 # Initialize with configuration
-config = File1Config.from_file("config.toml")
-file1 = File1(config)
+config = file1Config.from_file("config.toml")
+file1 = file1(config)
 
 # Analyze a directory
 summary = file1.summarize_directory("/path/to/project")
@@ -139,7 +140,7 @@ import shutil
 # Add the parent directory to the path to import the file1 module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from file1.config import File1Config
+from file1.config import file1Config
 from file1.file_manager import FileManager
 
 def main():
@@ -160,7 +161,7 @@ def main():
     print(f"Copied test_repo to {target_dir}")
     
     # Load configuration
-    config = File1Config.from_toml(config_path)
+    config = file1Config.from_toml(config_path)
     print(f"Loaded configuration from {config_path}")
     
     # Initialize file manager
@@ -190,7 +191,7 @@ if __name__ == "__main__":
 ### Custom Configuration
 
 ```python
-from file1.config import ModelConfig, LLMConfig, RerankConfig, File1Config
+from file1.config import ModelConfig, LLMConfig, RerankConfig, file1Config
 
 # Create custom configuration
 model_config = ModelConfig(
@@ -210,13 +211,13 @@ rerank_config = RerankConfig(
     api_key="your-reranker-api-key"
 )
 
-config = File1Config(
+config = file1Config(
     llm=llm_config,
     reranker=rerank_config,
     save_path="/path/to/save/directory"
 )
 
-file1 = File1(config)
+file1 = file1(config)
 ```
 
 ## License
