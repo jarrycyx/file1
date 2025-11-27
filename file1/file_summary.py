@@ -6,12 +6,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage
-from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string
+from openai import OpenAI
+
 
 from .config import File1Config
-from .vision import get_fig_base64, call_vlm_with_prompt
+from .utils.token_cnt import HumanMessage, count_tokens_approximately
+from .utils.vision import get_fig_base64
+from .vision import OpenAIVLM
 # Removed import of perform_rerank as we now use APIReranker directly
 
 
@@ -20,26 +21,27 @@ class FileSummary:
     File inspection and summarization tool for checking file modification times and generating file trees with one-sentence summaries for each file.
     """
     
-    def __init__(self, config: File1Config):
+    def __init__(self, analyze_dir: str, config: File1Config, summary_cache_path: str = None):
         """
         Initialize the file inspection and summarization tool
         
         Args:
+            analyze_dir: Directory to analyze
             config: Configuration object
+            summary_cache_path: Path to summary cache JSON file, default to "file_summary_cache.json" in analyze_dir
         """
         self.config = config
+        self.analyze_dir = analyze_dir
             
-        self.file_cache_path = os.path.join(config.save_path, "file_summary_cache.json")
+        self.summary_cache_path = summary_cache_path or os.path.join(self.analyze_dir, "file_summary_cache.json")
         self.file_cache = self._load_cache()
         
-        # Initialize the large language model
-        self.concluder_llm = init_chat_model(
-            config.llm.chat.model,
-            base_url=config.llm.chat.base_url,
-            model_provider="openai",
-            openai_api_key=config.llm.chat.api_key,
-            extra_body={"chat_template_kwargs": {"enable_thinking": True}},
+        # Initialize the large language model using OpenAI Python SDK
+        self.concluder_llm = OpenAI(
+            api_key=config.llm.chat.api_key,
+            base_url=config.llm.chat.base_url
         )
+        self.concluder_model = config.llm.chat.model
     
     def _load_cache(self) -> Dict:
         """
@@ -48,9 +50,9 @@ class FileSummary:
         Returns:
             File cache dictionary
         """
-        if os.path.exists(self.file_cache_path):
+        if os.path.exists(self.summary_cache_path):
             try:
-                with open(self.file_cache_path, 'r', encoding='utf-8') as f:
+                with open(self.summary_cache_path, 'r', encoding='utf-8') as f:
                     file_summary_cache = json.load(f)
                     logger.debug(f"File summary cache loaded with {len(file_summary_cache)} entries: {str(file_summary_cache)}")
                     return file_summary_cache
@@ -69,10 +71,10 @@ class FileSummary:
                 del self.file_cache[file_path]
         
         try:
-            cache_dir = os.path.dirname(self.file_cache_path)
+            cache_dir = os.path.dirname(self.summary_cache_path)
             if cache_dir:  # Ensure directory path is not empty
                 os.makedirs(cache_dir, exist_ok=True)
-            with open(self.file_cache_path, 'w', encoding='utf-8') as f:
+            with open(self.summary_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(self.file_cache, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.warning(f"Failed to save file cache: {e}")
@@ -149,7 +151,8 @@ class FileSummary:
                             # 使用视觉模型进行分类和总结
                             prompt = "Please summarize in one sentence (no more than 500 characters) the main function and content of the following image:"
                             logger.info(f"Summarize {file_path} with prompt: {prompt}")
-                            summary = call_vlm_with_prompt(base64_content, self.config, prompt)
+                            vlm = OpenAIVLM(self.config)
+                            summary = vlm.call_vlm(base64_content, prompt)
                             if summary:
                                 return summary
                     except Exception as e:
@@ -209,10 +212,12 @@ class FileSummary:
                 
                 logger.debug(f"Summarizing file {file_path}...")
             
-                # Wrap the prompt with HumanMessage
-                message = HumanMessage(content=prompt)
-                response = self.concluder_llm.invoke([message])
-                summary = response.content.strip()
+                # Use OpenAI Python SDK to call the model
+                response = self.concluder_llm.chat.completions.create(
+                    model=self.concluder_model,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                summary = response.choices[0].message.content.strip()
                     
                 logger.info(f"Summary for {file_path}: {summary}")
                 
@@ -317,18 +322,13 @@ class FileSummary:
         """
         
         # Generate file tree and summaries
-        file_tree_workspace, summaries_workspace = self._generate_file_tree(os.path.join(self.config.save_path, "workspace"))
-        
-        file_tree = file_tree_workspace
-        
-        summaries = {**summaries_workspace}
-        
+        file_tree, summaries = self._generate_file_tree(self.analyze_dir)
         
         # Save cache
         self._save_cache()
         
         # Build result string
-        result = [f"File tree: {self.config.save_path}"]
+        result = [f"File tree: {self.self.analyze_dir}"]
         result.extend(file_tree)
         result.append("\nFile summaries:")
         
@@ -342,7 +342,7 @@ class FileSummary:
                 indent = line[:len(line) - len(file_name)]
                 result.append(f"{indent}{file_name}: {summaries[line]}")
                 
-        if count_tokens_approximately([HumanMessage(content="\n".join(result))]) > max_token_cnt:
+        if count_tokens_approximately(["\n".join(result)]) > max_token_cnt:
             if question:
                 logger.info(f"Reranking result with question: {question}")
                 from .reranker.api_reranker import APIReranker
@@ -357,7 +357,7 @@ class FileSummary:
                 truncated = []
                 current_token = 0
                 for line in result:
-                    token_cnt = count_tokens_approximately([HumanMessage(content=line)])
+                    token_cnt = count_tokens_approximately([line])
                     if current_token + token_cnt <= max_token_cnt:
                         truncated.append(line)
                         current_token += token_cnt

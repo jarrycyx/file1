@@ -10,10 +10,7 @@ import requests
 import traceback
 from copy import deepcopy
 
-from langchain_core.messages import ToolMessage, HumanMessage, AIMessage
-from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from ..utils.token_cnt import HumanMessage, count_tokens_approximately
 
 import numpy as np
 
@@ -138,7 +135,8 @@ class APIReranker(BaseReranker):
         current_token_cnt = 0
         
         for doc, score in zip(documents, scores):
-            msg_token_cnt = count_tokens_approximately([HumanMessage(content=doc)])
+            # 直接使用字符串内容计算token数量
+            msg_token_cnt = count_tokens_approximately([doc])
             if current_token_cnt + msg_token_cnt > token_limit:
                 break
             all_str.append(doc)
@@ -235,7 +233,8 @@ class APIReranker(BaseReranker):
         current_token_cnt = 0
         
         for doc, score in zip(sorted_documents, sorted_scores):
-            msg_token_cnt = count_tokens_approximately([HumanMessage(content=doc)])
+            # 直接使用字符串内容计算token数量
+            msg_token_cnt = count_tokens_approximately([doc])
             if current_token_cnt + msg_token_cnt > token_limit:
                 break
             filtered_documents.append(doc)
