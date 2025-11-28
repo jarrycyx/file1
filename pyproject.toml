@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "file1"
+name = "file-one"
 version = "0.0.1"
 description = "Tired of main_fixed.py? file1 cleans up the mess from AI agents."
 readme = {file = "README.md", content-type = "text/markdown"}
