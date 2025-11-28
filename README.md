@@ -1,12 +1,12 @@
 <h1 align="center">👕 file1.agent: file management layer for AI agents</h1>
 
+
+![file1.agent](fig.png)
 <h2 align="center"> Tired of main_fixed.py? file1.agent cleans up the mess from AI agents.</h2>
 
 Tired of navigating through endless main_fixed.py and file_improved.py files? file1.agent revolutionizes your file management by eliminating AI-generated code clutter. Our advanced detection algorithms precisely **identify and remove duplicate files and mock data**, while our powerful graph visualization reveals complex file relationships at a glance. With vision model integration for comprehensive content analysis across text, images, and PDFs, file1.agent provides AI agents with complete file context.
 
 Even better, the file relationship graph and automatically generated file summaries can **serve directly as agent memory**, giving your AI agents persistent, structured awareness of your entire workspace.
-
-![file1.agent](fig.png)
 
 ## Features
 
