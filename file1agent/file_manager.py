@@ -559,7 +559,9 @@ Result: Yes
         self._save_relationships_to_json(file_relationships)
 
         # Create and save the graph visualization
-        visualize_graph(file_relationships, all_files, save_fig_path=os.path.join(self.analyze_dir, "file_relation"))
+        visualize_graph(
+            file_relationships, all_files, save_fig_path=os.path.splitext(self.file_relationships_save_path)[0]
+        )
 
         logger.info(f"Built file relationship graph with {len(file_relationships)} nodes")
         return file_relationships
