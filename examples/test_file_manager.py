@@ -14,9 +14,9 @@ from file1agent.file_manager import FileManager
 def main():
     # Define paths
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    test_repo_dir = os.path.join(current_dir, "test_repo")
-    outputs_dir = os.path.join(current_dir, "..", "outputs")
-    config_path = os.path.join(current_dir, "..", "config.toml")
+    test_repo_dir = os.path.abspath(os.path.join(current_dir, "test_repo"))
+    outputs_dir = os.path.abspath(os.path.join(current_dir, "..", "outputs"))
+    config_path = os.path.abspath(os.path.join(current_dir, "..", "config.toml"))
 
     # Create outputs directory if it doesn't exist
     os.makedirs(outputs_dir, exist_ok=True)

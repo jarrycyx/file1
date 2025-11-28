@@ -25,13 +25,13 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
 ]
 dependencies = [
-    "openai>=1.0.0",
+    "openai>=2.0.0",
     "pydantic>=2.0.0",
     "loguru>=0.7.0",
     "requests>=2.25.0",
     "numpy>=1.20.0",
     "graphviz>=0.20.0",
-    "fitz>=0.0.1.dev2",
+    "PyMuPDF>=0.0.1.dev2",
     "toml>=0.10.0",
 ]
 license = "MIT"
