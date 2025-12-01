@@ -1,0 +1,9 @@
+{
+  "openai/glm-4.5-air": {
+    "max_tokens": 128000,
+    "input_cost_per_token": 0.0000008,
+    "output_cost_per_token": 0.000002,
+    "litellm_provider": "openai",
+    "mode": "chat"
+  }
+}

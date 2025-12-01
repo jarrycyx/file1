@@ -36,6 +36,11 @@ dependencies = [
 ]
 license = "MIT"
 
+[project.optional-dependencies]
+swe_bench = [
+    "swe-bench>=1.0.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/jarrycyx/file1agent"
 Repository = "https://github.com/jarrycyx/file1agent.git"
