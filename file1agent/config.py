@@ -15,7 +15,6 @@ class ModelConfig(BaseModel):
 class LLMConfig(BaseModel):
     """Language model configuration"""
 
-    language: str = Field(default="chs", description="Language for the model")
     chat: ModelConfig = Field(default_factory=ModelConfig, description="Chat model configuration")
     vision: ModelConfig = Field(default_factory=ModelConfig, description="Vision model configuration")
 

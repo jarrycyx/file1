@@ -644,13 +644,14 @@ Result: Yes
         result = [f"File relationship graph: {self.analyze_dir}"]
         rel_result = []
 
+        this_relation = ""
         # Add each file and its relationships
         for file_path, referenced_files in file_relationships.items():
             # Get file summary if available
             abs_file_path = os.path.abspath(os.path.join(self.analyze_dir, file_path))
             file_summary = summaries.get(abs_file_path, "No summary available")
             
-            this_relation = f"\nFile: {file_path}"
+            this_relation += f"\nFile: {file_path}"
             this_relation += f"\nSummary: {file_summary}"
 
             # Add referenced files

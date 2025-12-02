@@ -20,6 +20,7 @@ class File1AgentBase:
     def __init__(
         self,
         config: Union[File1AgentConfig, str, dict, None] = None,
+        realloc_log: bool = True,
         log_level: str = "WARNING",
         log_path: str = None,
         **kwargs,
@@ -29,25 +30,28 @@ class File1AgentBase:
 
         Args:
             config: Configuration object or path to TOML file or TOML string
+            realloc_log: Whether to reallocate log using loguru, set to False when already configured loguru
+            log_level: Log level, default to WARNING
+            log_path: Path to log file, default to None
         """
-
-        logger.remove()
-        logger.add(
-            sys.stdout,
-            format="<green>{time:YYYYMMDDHHmmss}</green>|<level>{level}</level>|{message}|<yellow>{file}:{line}</yellow>|"
-            + f"<cyan>file1.agent</cyan>",
-            colorize=True,
-            level=log_level,
-        )
-        if log_path is not None:
-            # print(f"Log path: {log_path}")
+        if realloc_log:
+            logger.remove()
             logger.add(
-                log_path,
+                sys.stdout,
                 format="<green>{time:YYYYMMDDHHmmss}</green>|<level>{level}</level>|{message}|<yellow>{file}:{line}</yellow>|"
                 + f"<cyan>file1.agent</cyan>",
-                colorize=False,
-                level="DEBUG",
+                colorize=True,
+                level=log_level,
             )
+            if log_path is not None:
+                # print(f"Log path: {log_path}")
+                logger.add(
+                    log_path,
+                    format="<green>{time:YYYYMMDDHHmmss}</green>|<level>{level}</level>|{message}|<yellow>{file}:{line}</yellow>|"
+                    + f"<cyan>file1.agent</cyan>",
+                    colorize=False,
+                    level="DEBUG",
+                )
 
         if isinstance(config, str):
             if os.path.isfile(config):
