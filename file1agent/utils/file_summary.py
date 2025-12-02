@@ -151,6 +151,9 @@ class FileSummary:
             # Check file extension to handle image and PDF files
             file_ext = os.path.splitext(file_path)[1].lower()
             if file_ext in [".png", ".jpg", ".jpeg", ".pdf"]:
+                if not vlm_config:
+                    return ""
+                
                 if file_path in file_cache:
                     return file_cache[file_path]
                 for try_i in range(3):
@@ -280,7 +283,7 @@ class FileSummary:
         Returns:
             Dictionary of file path to file summary
         """
-        all_summaries = {}
+        all_summaries = {p: self.file_cache.get(p, {}).get("summary", "") for p in self.file_cache}
         all_file_tree = self._generate_file_tree_recusive(self.analyze_dir)
         all_paths = [path for path, _ in all_file_tree]
 
@@ -308,7 +311,7 @@ class FileSummary:
                 # Collect results
                 for file_path, summary in zip(task_list, results):
                     self._update_cache(file_path, summary)
-
+                    all_summaries[file_path] = summary
         self._save_cache()
         return all_summaries
 

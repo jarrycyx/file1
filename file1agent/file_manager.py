@@ -335,6 +335,7 @@ Result: Yes
                 model=self.config.rerank.rerank_model,
                 api_key=self.config.rerank.rerank_api_key,
                 base_url=self.config.rerank.rerank_base_url,
+                worker_num=self.worker_num,
             )
 
             try:
@@ -479,19 +480,18 @@ Result: Yes
         file_relationships = {}
 
         # Determine the number of processes to use
-        logger.info(f"Using {self.worker_num} processes to build file relationship graph")
+        num_process = max(self.worker_num, os.cpu_count() // 4 - 1)
+        logger.info(f"Using {num_process} processes to build file relationship graph")
 
         # Create a partial function with all_files as a fixed argument
         process_func = partial(
             self._process_file_for_graph,
             analyze_dir=self.analyze_dir,
             all_files=all_files,
-            file_cache=self.file_summary.file_cache,
-            vlm_config=self.config.llm.vision,
         )
 
         # Use multiprocessing to process files in parallel
-        with multiprocessing.Pool(processes=self.worker_num) as pool:
+        with multiprocessing.Pool(processes=num_process) as pool:
             results = list(
                 tqdm.tqdm(
                     pool.imap(process_func, all_files), total=len(all_files), desc="Building file relationship graph"
@@ -505,13 +505,15 @@ Result: Yes
 
         # Save the file relationships to JSON
         self._save_relationships_to_json(file_relationships)
-    
+
         # Create and save the graph visualization
         if visualize:
             if len(file_relationships) > 10:
                 logger.warning(f"Only visualize the first 10 file relationships out of {len(file_relationships)}")
             visualize_graph(
-                {k: v for k, v in file_relationships.items()[:10]}, all_files, save_fig_path=os.path.splitext(self.file_relationships_save_path)[0]
+                {k: v[:10] for k, v in list(file_relationships.items())[:10]},
+                all_files,
+                save_fig_path=os.path.splitext(self.file_relationships_save_path)[0],
             )
 
         logger.info(f"Built file relationship graph with {len(file_relationships)} nodes")
@@ -548,13 +550,16 @@ Result: Yes
 
             logger.info(f"Loaded file relationships from {json_path}")
             return file_relationships
+        except FileNotFoundError:
+            logger.info(f"File relationships JSON not found at {json_path}")
+            return {}
         except Exception as e:
             logger.error(f"Error loading file relationships from JSON: {e}")
             return {}
 
     @staticmethod
     def _process_file_for_graph(
-        file_path: str, analyze_dir: str, all_files: List[str], file_cache: Dict = {}, vlm_config: ModelConfig = None
+        file_path: str, analyze_dir: str, all_files: List[str]
     ) -> Tuple[str, List[str]]:
         """
         Process a single file to find references to other files
@@ -585,9 +590,7 @@ Result: Yes
         logger.debug(f"Finding children files for: {file_path}")
 
         # Read file content
-        content = FileSummary._read_file_content(
-            file_path, vlm_config=vlm_config, file_cache=file_cache
-        )
+        content = FileSummary._read_file_content(file_path)
 
         # Find references to other files
         referenced_files = []
@@ -630,34 +633,37 @@ Result: Yes
             String representation of file relationships with summaries
         """
         # Build or load the file relationship graph
-        self.build_graph()
         file_relationships = self._load_relationships_from_json()
+        if not file_relationships:
+            file_relationships = self.build_graph()
 
         # Get file summaries
         summaries = self.file_summary.get_all_summaries()
 
         # Build result string with graph structure
         result = [f"File relationship graph: {self.analyze_dir}"]
+        rel_result = []
 
         # Add each file and its relationships
         for file_path, referenced_files in file_relationships.items():
             # Get file summary if available
             abs_file_path = os.path.abspath(os.path.join(self.analyze_dir, file_path))
             file_summary = summaries.get(abs_file_path, "No summary available")
-
-            # Add file information
-            result.append(f"\nFile: {file_path}")
-            result.append(f"Summary: {file_summary}")
+            
+            this_relation = f"\nFile: {file_path}"
+            this_relation += f"\nSummary: {file_summary}"
 
             # Add referenced files
             if referenced_files:
-                result.append("References:")
+                this_relation += "\nReferences:"
                 for ref_file in referenced_files:
                     ref_path = os.path.abspath(os.path.join(self.analyze_dir, ref_file))
                     ref_summary = summaries.get(ref_path, "No summary available")
-                    result.append(f"  - {ref_file}: {ref_summary}")
+                    this_relation += f"\n  - {ref_file}: {ref_summary}"
             else:
-                result.append("References: None")
+                this_relation += "\nReferences: None"
+
+        rel_result.append(this_relation)
 
         # Check token count and truncate or rerank if necessary
         if count_tokens_approximately(["\n".join(result)]) > max_token_cnt:
@@ -669,13 +675,14 @@ Result: Yes
                     model=self.config.rerank.rerank_model,
                     api_key=self.config.rerank.rerank_api_key,
                     base_url=self.config.rerank.rerank_base_url,
+                    worker_num=self.worker_num
                 )
-                result = reranker.rerank_to_limit(result, question, max_token_cnt)
+                rel_result = reranker.rerank_to_limit(rel_result, question, max_token_cnt)
             else:
                 logger.warning("No question provided for reranking. Directly truncate the result.")
                 truncated = []
                 current_token = 0
-                for line in result:
+                for line in rel_result:
                     token_cnt = count_tokens_approximately([line])
                     if current_token + token_cnt <= max_token_cnt:
                         truncated.append(line)
@@ -683,8 +690,10 @@ Result: Yes
                     else:
                         break
 
-                result = truncated
+                rel_result = truncated
 
+        result.extend(rel_result)
+        
         return "\n".join(result)
 
     def search_workspace_direct(self, max_token_cnt: int = 1000, question: str = "") -> str:
@@ -716,6 +725,7 @@ Result: Yes
                     model=self.config.rerank.rerank_model,
                     api_key=self.config.rerank.rerank_api_key,
                     base_url=self.config.rerank.rerank_base_url,
+                    worker_num=self.worker_num
                 )
                 result = reranker.rerank_to_limit(result, question, max_token_cnt)
             else:
