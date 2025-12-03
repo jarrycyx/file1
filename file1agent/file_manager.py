@@ -20,35 +20,8 @@ from .config import File1AgentConfig, ModelConfig
 from .utils.token_cnt import HumanMessage, count_tokens_approximately
 from .utils.visualization import visualize_graph
 from .utils.file_summary import FileSummary
-
+from .utils.file_inclusion import FileInclusion
 from .reranker.api_reranker import APIReranker
-
-IGNORE_DIRS = [".git", "__pycache__", ".pytest_cache", "node_modules", ".vscode", ".idea", ".f1a_cache"]
-IGNORE_FILES = [".DS_Store", "Thumbs.db", "__init__.py"]
-CODE_EXTENSIONS = {".py", ".sh", ".c", ".cpp", ".r"}
-
-# Define file extensions to ignore for file relation analysis
-IGNORE_FILE_EXT = [".md"]
-
-# These following can only be the child of other files and cannot have children themselves, because these are probably the results of code execution
-GRAPH_NO_CHILD_FILE_EXT = [
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".pdf",
-    ".zip",
-    ".tar",
-    ".gz",
-    ".exe",
-    ".dll",
-    ".so",
-    ".dylib",
-    ".csv",
-    ".xlsx",
-    ".log",
-    ".txt",
-]
-
 
 class FileManager(File1AgentBase):
     """
@@ -90,6 +63,7 @@ class FileManager(File1AgentBase):
             self.config, analyze_dir, summary_cache_path=summary_cache_path, worker_num=worker_num, **kwargs
         )
         self.file_summary.generate_file_tree_with_summaries()
+        self.file_inclusion = FileInclusion(self.config.inclusion)
 
         # Initialize the large language model for detailed comparison using OpenAI Python SDK
         self.comparison_llm = OpenAI(api_key=self.config.llm.chat.api_key, base_url=self.config.llm.chat.base_url)
@@ -118,10 +92,10 @@ class FileManager(File1AgentBase):
         """
         try:
             # Read file contents
-            content1 = FileSummary._read_file_content(
+            content1 = self.file_summary._read_file_content(
                 file1_path, vlm_config=self.config.llm.vision, file_cache=self.file_summary.file_cache
             )
-            content2 = FileSummary._read_file_content(
+            content2 = self.file_summary._read_file_content(
                 file2_path, vlm_config=self.config.llm.vision, file_cache=self.file_summary.file_cache
             )
 
@@ -174,7 +148,7 @@ Result: Yes
         """
         try:
             # Read file content
-            content = FileSummary._read_file_content(
+            content = self.file_summary._read_file_content(
                 file_path, vlm_config=self.config.llm.vision, file_cache=self.file_summary.file_cache
             )
 
@@ -291,12 +265,7 @@ Result: Yes
             if not os.path.exists(file_path):
                 continue
 
-            ext = os.path.splitext(file_path)[1].lower()
-            # Do not compare markdown files because they are usually reports
-            if ext in IGNORE_FILE_EXT:
-                continue
-
-            if any(d in file_path for d in IGNORE_DIRS + IGNORE_FILES):
+            if not self.file_inclusion.is_included(file_path):
                 continue
 
             # Get the parent directory of the current file
@@ -305,6 +274,8 @@ Result: Yes
             # Create a list of all other files in the same subdirectory
             other_files = []
             for path in file_paths:
+                if not self.file_inclusion.is_included(path):
+                    continue
                 if (
                     (os.path.dirname(path) == current_dir)
                     and (path != file_path)
@@ -429,10 +400,10 @@ Result: Yes
             _, ext = os.path.splitext(file_path)
 
             # Check if it's a code file
-            if ext.lower() not in CODE_EXTENSIONS:
+            if not self.file_inclusion.is_code_file(ext):
                 continue
 
-            if any(d in file_path for d in IGNORE_DIRS + IGNORE_FILES):
+            if not self.file_inclusion.is_included(file_path):
                 continue
 
             # Check if the file contains simulated data
@@ -488,13 +459,16 @@ Result: Yes
             self._process_file_for_graph,
             analyze_dir=self.analyze_dir,
             all_files=all_files,
+            inclusion_config=self.config.inclusion,
         )
+        
+        all_files_with_content = [(file_path, self.file_summary._read_file_content(file_path)) for file_path in all_files]
 
         # Use multiprocessing to process files in parallel
         with multiprocessing.Pool(processes=num_process) as pool:
             results = list(
                 tqdm.tqdm(
-                    pool.imap(process_func, all_files), total=len(all_files), desc="Building file relationship graph"
+                    pool.imap(process_func, all_files_with_content), total=len(all_files), desc="Building file relationship graph"
                 )
             )
 
@@ -559,38 +533,38 @@ Result: Yes
 
     @staticmethod
     def _process_file_for_graph(
-        file_path: str, analyze_dir: str, all_files: List[str]
+        file_path_content_tuple: Tuple[str, str], analyze_dir: str, all_files: List[str], inclusion_config: FileInclusion
     ) -> Tuple[str, List[str]]:
         """
         Process a single file to find references to other files
 
         Args:
-            file_path: Path to the file to process
+            file_path_content_tuple: Tuple of (file_path, file_content)
             all_files: List of all files in the project
+            inclusion_config: FileInclusion instance to check file inclusion
 
         Returns:
             Tuple of (file_path, list of referenced files)
         """
         # Skip non-existent files
+        file_inclusion = FileInclusion(inclusion_config)
+        
+        file_path, file_content = file_path_content_tuple
+        
         if not os.path.exists(file_path):
             return (os.path.relpath(file_path, analyze_dir), [])
 
-        if any(d in file_path for d in IGNORE_DIRS + IGNORE_FILES):
+        if not file_inclusion.is_included(file_path):
             return (os.path.relpath(file_path, analyze_dir), [])
 
         # Get file extension
         _, ext = os.path.splitext(file_path)
 
-        if ext.lower() in IGNORE_FILE_EXT:
-            return (os.path.relpath(file_path, analyze_dir), [])
-
-        if ext.lower() in GRAPH_NO_CHILD_FILE_EXT:
+        if file_inclusion.is_no_child_file(file_path):
             return (os.path.relpath(file_path, analyze_dir), [])
 
         logger.debug(f"Finding children files for: {file_path}")
 
-        # Read file content
-        content = FileSummary._read_file_content(file_path)
 
         # Find references to other files
         referenced_files = []
@@ -605,17 +579,14 @@ Result: Yes
             other_basename = os.path.splitext(other_filename)[0]
 
             _, ext = os.path.splitext(other_file_path)
-            if ext.lower() in IGNORE_FILE_EXT:
-                continue
-
-            if any(d in file_path for d in IGNORE_DIRS + IGNORE_FILES):
+            if not file_inclusion.is_included(other_file_path):
                 continue
 
             # Check if the filename or basename is referenced in the content
             # Using word boundaries to avoid partial matches
-            if re.search(r"\b" + re.escape(other_filename) + r"\b", content):
+            if re.search(r"\b" + re.escape(other_filename) + r"\b", file_content):
                 referenced_files.append(os.path.relpath(other_file_path, analyze_dir))
-            elif re.search(r"\b" + re.escape(other_basename) + r"\b", content):
+            elif re.search(r"\b" + re.escape(other_basename) + r"\b", file_content):
                 referenced_files.append(os.path.relpath(other_file_path, analyze_dir))
 
         logger.debug(f"Found references to: {referenced_files}")
@@ -633,9 +604,8 @@ Result: Yes
             String representation of file relationships with summaries
         """
         # Build or load the file relationship graph
-        file_relationships = self._load_relationships_from_json()
-        if not file_relationships:
-            file_relationships = self.build_graph()
+        file_relationships = self.build_graph()
+        # TODO: only update the file relationships that are changed
 
         # Get file summaries
         summaries = self.file_summary.get_all_summaries()
@@ -667,7 +637,7 @@ Result: Yes
         rel_result.append(this_relation)
 
         # Check token count and truncate or rerank if necessary
-        if count_tokens_approximately(["\n".join(result)]) > max_token_cnt:
+        if count_tokens_approximately(["\n".join(rel_result)]) > max_token_cnt:
             if question:
                 logger.info(f"Reranking result with question: {question}")
                 from .reranker.api_reranker import APIReranker

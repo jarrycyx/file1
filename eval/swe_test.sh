@@ -27,7 +27,7 @@ python eval/swebench_file1.py\
     --model openai/glm-4.5-air \
     --subset verified \
     --split test \
-    --workers 4 \
+    --workers 1 \
     --output outputs/swebench/
 
 cd eval/SWE-bench ; \

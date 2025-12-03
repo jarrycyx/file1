@@ -30,6 +30,78 @@ class RerankConfig(BaseModel):
     )
 
 
+class InclusionConfig(BaseModel):
+    """File inclusion configuration"""
+
+    # Mode: 'blacklist' or 'whitelist'
+    mode: str = Field(default="blacklist", description="File inclusion mode: 'blacklist' or 'whitelist'")
+    
+    # Blacklist patterns
+    path_blacklist: list[str] = Field(
+        default=[
+            ".git",
+            "__pycache__",
+            ".pytest_cache",
+            "node_modules",
+            ".vscode",
+            ".idea",
+            ".f1a_cache",
+            ".cache",
+            ".DS_Store",
+            "Thumbs.db",
+            "__init__.py",
+            ".rst",
+            ".md",
+        ],
+        description="List of path patterns to exclude"
+    )
+    
+    # Whitelist patterns
+    ext_whitelist: list[str] = Field(
+        default=[".py", ".sh", ".c", ".cpp", ".r", ".jpg", ".jpeg", ".png", ".json", ".npy", ".csv"],
+        description="List of file extensions to include"
+    )
+    
+    # Code file extensions
+    code_extensions: list[str] = Field(
+        default=[".py", ".sh", ".c", ".cpp", ".r"],
+        description="List of code file extensions"
+    )
+    
+    image_extensions: list[str] = Field(
+        default=[".png", ".jpg", ".jpeg", ".pdf"],
+        description="List of image file extensions"
+    )
+    
+    # Graph parent extensions blacklist
+    graph_parent_ext_blacklist: list[str] = Field(
+        default=[
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".pdf",
+            ".zip",
+            ".tar",
+            ".gz",
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+            ".csv",
+            ".xlsx",
+            ".log",
+            ".txt",
+        ],
+        description="List of file extensions that cannot have children"
+    )
+    
+    # Graph parent extensions whitelist
+    graph_parent_ext_whitelist: list[str] = Field(
+        default=[".py", ".sh", ".c", ".cpp", ".r"],
+        description="List of file extensions that can have children"
+    )
+
+
 class File1AgentConfig(BaseModel):
     """
     Configuration model for File1Agent agent file management.
@@ -39,6 +111,7 @@ class File1AgentConfig(BaseModel):
     # Configuration sections
     llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
     rerank: RerankConfig = Field(default_factory=RerankConfig, description="Rerank configuration")
+    inclusion: InclusionConfig = Field(default_factory=InclusionConfig, description="File inclusion configuration")
 
     @classmethod
     def from_args(

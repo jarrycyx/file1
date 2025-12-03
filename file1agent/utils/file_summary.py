@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from loguru import logger
 from openai import OpenAI
-from multiprocessing import Pool, Manager, Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import copy
 import tqdm
 import functools
@@ -17,11 +17,7 @@ from .token_cnt import HumanMessage, count_tokens_approximately
 from ..vision import OpenAIVLM
 from .image_converter import ImageConverter
 from .base import File1AgentBase
-
-# Filter out hidden files and specific directories
-IGNORE_DIRS = [".git", "__pycache__", ".pytest_cache", "node_modules", ".vscode", ".idea", ".f1a_cache"]
-IGNORE_FILES = [".DS_Store", "Thumbs.db", "__init__.py"]
-
+from .file_inclusion import FileInclusion
 
 class FileSummary:
     """
@@ -51,6 +47,7 @@ class FileSummary:
         self.summary_cache_path = summary_cache_path or os.path.join(
             self.analyze_dir, ".f1a_cache", "file_summary_cache.json"
         )
+        self.file_inclusion = FileInclusion(self.config.inclusion)
 
         self._load_cache()
 
@@ -72,7 +69,17 @@ class FileSummary:
                         f"File summary cache loaded with {len(file_summary_cache)} entries: {str(file_summary_cache)}"
                     )
                     self.file_cache = file_summary_cache
-                    return file_summary_cache
+                    
+                    # Delete files that are not in file_tree
+                    file_tree = self._generate_file_tree_recusive(self.analyze_dir)
+                    file_tree = [fp for fp, _ in file_tree]
+                    new_cache = {}
+                    for fp, v in self.file_cache.items():
+                        if fp in file_tree:
+                            new_cache[fp] = v
+                    self.file_cache = new_cache
+                    
+                    return self.file_cache
             except Exception as e:
                 logger.warning(f"Failed to load file summary cache: {e}")
         self.file_cache = {}
@@ -132,9 +139,8 @@ class FileSummary:
         logger.debug(f"Check file {abs_path}, current mtime: {current_mtime}, cached mtime: {cached_mtime}")
         return current_mtime > cached_mtime
 
-    @staticmethod
     def _read_file_content(
-        file_path: str, max_size: int = 5000, vlm_config: ModelConfig = None, file_cache: Dict = {}
+        self, file_path: str, max_size: int = 5000
     ) -> str:
         """
         Read file content
@@ -142,7 +148,6 @@ class FileSummary:
         Args:
             file_path: File path
             max_size: Maximum number of bytes to read
-            vlm_config: Vision model configuration
 
         Returns:
             File content as string
@@ -151,11 +156,11 @@ class FileSummary:
             # Check file extension to handle image and PDF files
             file_ext = os.path.splitext(file_path)[1].lower()
             if file_ext in [".png", ".jpg", ".jpeg", ".pdf"]:
-                if not vlm_config:
+                if not self.config.llm.vision:
                     return ""
                 
-                if file_path in file_cache:
-                    return file_cache[file_path]
+                if file_path in self.file_cache:
+                    return self.file_cache[file_path]
                 for try_i in range(3):
                     try:
                         # 获取base64编码
@@ -166,7 +171,7 @@ class FileSummary:
                             # 使用视觉模型进行分类和总结
                             prompt = "Please summarize in one sentence (no more than 500 characters) the main function and content of the following image:"
                             logger.info(f"Summarize {file_path} with prompt: {prompt}")
-                            vlm = OpenAIVLM(vlm_config)
+                            vlm = OpenAIVLM(self.config.llm.vision)
                             summary = vlm.call_vlm(base64_content, prompt)
                             if summary:
                                 return summary
@@ -193,17 +198,14 @@ class FileSummary:
             logger.warning(f"Error reading file {file_path}: {e}")
             return None
 
-    @staticmethod
     def _summarize_file(
-        file_path: str, llm_config: ModelConfig, vlm_config: ModelConfig = None, file_cache: Dict = {}
+        self, file_path: str
     ) -> str:
         """
         Use large language model to generate a one-sentence summary of the file
 
         Args:
             file_path: File path
-            llm_config: Chat model configuration
-            vlm_config: Vision model configuration
 
         Returns:
             One-sentence summary of the file (no more than 200 characters)
@@ -211,7 +213,7 @@ class FileSummary:
         for try_i in range(3):
             try:
                 # Read file content, ensuring correct handling
-                content = FileSummary._read_file_content(file_path, vlm_config=vlm_config, file_cache=file_cache)
+                content = self._read_file_content(file_path)
                 if not content:
                     return "Cannot read file content"
 
@@ -232,10 +234,10 @@ class FileSummary:
 
                 logger.debug(f"Summarizing file {file_path}...")
 
-                concluder_llm = OpenAI(api_key=llm_config.api_key, base_url=llm_config.base_url)
+                concluder_llm = OpenAI(api_key=self.config.llm.chat.api_key, base_url=self.config.llm.chat.base_url)
                 # Use OpenAI Python SDK to call the model
                 response = concluder_llm.chat.completions.create(
-                    model=llm_config.model, messages=[{"role": "user", "content": prompt}]
+                    model=self.config.llm.chat.model, messages=[{"role": "user", "content": prompt}]
                 )
                 summary = response.choices[0].message.content.strip()
 
@@ -264,9 +266,7 @@ class FileSummary:
         this_file_summary = self.file_cache.get(abs_path, {}).get("summary", "")
         if os.path.isfile(abs_path):
             if self._is_file_updated(abs_path) or len(this_file_summary) > 2000:
-                summary = self._summarize_file(
-                    abs_path, llm_config=self.config.llm.chat, vlm_config=self.config.llm.vision
-                )
+                summary = self._summarize_file(abs_path)
                 self._update_cache(abs_path, summary)
             else:
                 # Get summary from cache
@@ -278,7 +278,7 @@ class FileSummary:
 
     def get_all_summaries(self) -> Dict[str, str]:
         """
-        Get all file summaries using multiprocessing
+        Get all file summaries using multithreading
 
         Returns:
             Dictionary of file path to file summary
@@ -287,31 +287,34 @@ class FileSummary:
         all_file_tree = self._generate_file_tree_recusive(self.analyze_dir)
         all_paths = [path for path, _ in all_file_tree]
 
-        # If worker_num is 1, use the original single-process approach
+        # If worker_num is 1, use the original single-thread approach
         if self.worker_num <= 1:
             for file_path in all_paths:
                 if os.path.isfile(file_path):
                     all_summaries[file_path] = self.get_file_summary(file_path)
         else:
-            # Prepare arguments for multiprocessing
-            partial_func = functools.partial(
-                self._summarize_file, llm_config=self.config.llm.chat, vlm_config=self.config.llm.vision
-            )
+            # Prepare task list
             task_list = []
             for path in all_paths:
                 if os.path.isfile(path) and self._is_file_updated(path):
                     task_list.append(path)
 
-            # Try using spawn method which works better across platforms
-            with Pool(processes=self.worker_num) as pool:
-                results = pool.imap_unordered(partial_func, task_list)
-
-                results = list(tqdm.tqdm(results, total=len(task_list)))
-
-                # Collect results
-                for file_path, summary in zip(task_list, results):
-                    self._update_cache(file_path, summary)
-                    all_summaries[file_path] = summary
+            # Use ThreadPoolExecutor for multithreading
+            with ThreadPoolExecutor(max_workers=self.worker_num) as executor:
+                # Submit all tasks
+                future_to_path = {executor.submit(self._summarize_file, path): path for path in task_list}
+                
+                # Process results as they complete
+                for future in tqdm.tqdm(as_completed(future_to_path), total=len(task_list)):
+                    file_path = future_to_path[future]
+                    try:
+                        summary = future.result()
+                        self._update_cache(file_path, summary)
+                        all_summaries[file_path] = summary
+                    except Exception as e:
+                        logger.warning(f"Error processing file {file_path}: {e}")
+                        all_summaries[file_path] = f"Error: {str(e)}"
+        
         self._save_cache()
         return all_summaries
 
@@ -345,7 +348,7 @@ class FileSummary:
         item_path_list = [os.path.abspath(os.path.join(analyze_path, item)) for item in items]
 
         for i, item_path in enumerate(item_path_list):
-            if any(d in item_path for d in IGNORE_DIRS + IGNORE_FILES):
+            if not self.file_inclusion.is_included(item_path):
                 continue
 
             is_last_item = i == len(items) - 1

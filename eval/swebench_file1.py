@@ -223,6 +223,7 @@ def file1_main(task: str, container_id: str, repo_dir_in_container: str, local_r
         config=config,
         analyze_dir=local_repo_dir,
         log_path=os.path.join("outputs", "file1agent.log"),
+        log_level="INFO",
     )
 
     direct_summary = file_manager.search_workspace(
