@@ -14,7 +14,7 @@ export OPENAI_BASE_URL="http://127.0.0.1:8077/v1"
 # export MSWEA_COST_TRACKING='ignore_errors'
 export LITELLM_MODEL_REGISTRY_PATH="eval/models.json"
 
-rm -rf outputs/swebench
+# rm -rf outputs/swebench
 
 # python eval/mini-swe-agent/src/minisweagent/run/extra/swebench.py\
 #     --model openai/glm-4.5-air \
@@ -23,12 +23,12 @@ rm -rf outputs/swebench
 #     --workers 4 \
 #     --output outputs/swebench/
 
-python eval/swebench_file1.py\
-    --model openai/glm-4.5-air \
-    --subset verified \
-    --split test \
-    --workers 1 \
-    --output outputs/swebench/
+# python eval/swebench_file1.py\
+#     --model openai/glm-4.5-air \
+#     --subset verified \
+#     --split test \
+#     --workers 1 \
+#     --output outputs/swebench/
 
 cd eval/SWE-bench ; \
 python -m swebench.harness.run_evaluation \
