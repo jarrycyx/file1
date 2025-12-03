@@ -123,9 +123,9 @@ class APIReranker(BaseReranker):
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Retrying... {attempt + 1}/{self.max_retries}")
                 try:
-                    logger.warning(response.json())
-                except:
                     logger.warning(str(response))
+                except:
+                    pass
                 time.sleep(10)
                 continue
 
